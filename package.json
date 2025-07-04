@@ -2,7 +2,7 @@
     "name": "qbs-tools-stryker",
     "displayName": "Qbs (Stryker)",
     "description": "Qbs tools support for Visual Studio Code",
-    "version": "2.1.8-syk01",
+    "version": "2.1.8-syk02",
     "publisher": "qbs-community",
     "author": {
         "name": "Denis Shienkov"
