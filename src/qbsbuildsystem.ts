@@ -142,6 +142,12 @@ export class QbsBuildSystem implements vscode.Disposable {
                 const fsPath = sourceNode.getFsPath();
                 return await this.compileOnlyWithProgress(fsPath, QbsBuildSystemTimeout.Progress);
             }));
+
+        // Generate clang compilation database command.
+        context.subscriptions.push(vscode.commands.registerCommand(QbsCommandKey.GenerateClangdb,
+            async () => {
+                return await this.generateClangdbWithProgress(QbsBuildSystemTimeout.Progress);
+            }));
     }
 
     private subscribeSessionMessages(): void {
@@ -748,6 +754,13 @@ export class QbsBuildSystem implements vscode.Disposable {
                 disposables.forEach((d) => d.dispose());
             });
         });
+    }
+
+    private async generateClangdbWithProgress(timeout: number): Promise<boolean> {
+        // TODO: Implement the actual clang compilation database generation
+        vscode.window.showInformationMessage(localize('qbs.buildsystem.generate.clangdb.placeholder.message',
+            'Generate Clangdb command called - implementation coming soon!'));
+        return true;
     }
 
     public async fetchProductRunEnvironment(productName: string): Promise<QbsProcessEnvironment> {
