@@ -38,4 +38,5 @@ export enum QbsCommandKey {
     UpdateBuildProfiles = 'qbs.updateBuildProfiles',
     CreateBuildProfilesFilter = 'qbs.createBuildProfilesFilter',
     EditBuildProfilesFilter = 'qbs.editBuildProfilesFilter',
+    GenerateClangdb = 'qbs.generateClangdb',
 }

@@ -13,7 +13,8 @@ export class QbsProtocolBuildRequest extends QbsProtocolRequest {
         keepGoing: boolean,
         logLevel: QbsProtocolLogLevel,
         maxJobCount: number,
-        install: boolean) {
+        install: boolean,
+        dryRun?: boolean) {
         super();
         this.setCleanInstallRoot(cleanInstallRoot);
         this.setCommandEchoMode(commandEchoMode);
@@ -22,6 +23,7 @@ export class QbsProtocolBuildRequest extends QbsProtocolRequest {
         this.setLogLevel(logLevel);
         this.setMaxJobCount(maxJobCount);
         this.setInstall(install);
+        this.setDryRun(dryRun);
         this.setModuleProperties(QbsProtocolModuleProperties.Exported);
         this.setProducts([]);
         this.setType(QbsProtocolRequestType.Build);

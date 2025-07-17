@@ -222,6 +222,11 @@
                 "command": "qbs.editBuildProfilesFilter",
                 "title": "%qbs-tools.command.qbs.editBuildProfilesFilter.title%",
                 "category": "Qbs"
+            },
+            {
+                "command": "qbs.generateClangdb",
+                "title": "%qbs-tools.command.qbs.generateClangdb.title%",
+                "category": "Qbs"
             }
         ],
         "taskDefinitions": [
@@ -352,6 +357,10 @@
                 },
                 {
                     "command": "qbs.updateBuildProfiles",
+                    "when": "qbs:extension-activated"
+                },
+                {
+                    "command": "qbs.generateClangdb",
                     "when": "qbs:extension-activated"
                 }
             ],

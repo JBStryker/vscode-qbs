@@ -33,6 +33,8 @@ export enum QbsProtocolDataKey {
     FullDisplayName = 'full-display-name',
     FullEnvironment = 'full-environment',
     GeneratedFilesForSource = 'generated-files-for-source',
+    GenerateDone = 'generate-done',
+    GeneratorName = 'generator-name',
     Groups = 'groups',
     Hello = 'hello',
     Install = 'install',
