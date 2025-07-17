@@ -54,6 +54,7 @@ export class QbsSession implements vscode.Disposable {
     private readonly processResultReceived: vscode.EventEmitter<QbsProtocolProcessResponse> = new vscode.EventEmitter<QbsProtocolProcessResponse>();
     private readonly projectBuilt: vscode.EventEmitter<QbsSessionProjectData> = new vscode.EventEmitter<QbsSessionProjectData>();
     private readonly projectCleaned: vscode.EventEmitter<QbsProtocolMessageResponse> = new vscode.EventEmitter<QbsProtocolMessageResponse>();
+    private readonly projectGenerated: vscode.EventEmitter<QbsProtocolMessageResponse> = new vscode.EventEmitter<QbsProtocolMessageResponse>();
     private readonly projectInstalled: vscode.EventEmitter<QbsProtocolMessageResponse> = new vscode.EventEmitter<QbsProtocolMessageResponse>();
     private readonly projectResolved: vscode.EventEmitter<QbsSessionProjectData> = new vscode.EventEmitter<QbsSessionProjectData>();
     private readonly processEnvironmentReceived: vscode.EventEmitter<QbsProcessEnvironment> = new vscode.EventEmitter<QbsProcessEnvironment>();
@@ -71,6 +72,7 @@ export class QbsSession implements vscode.Disposable {
     public readonly onProcessResultReceived: vscode.Event<QbsProtocolProcessResponse> = this.processResultReceived.event;
     public readonly onProjectBuilt: vscode.Event<QbsSessionProjectData> = this.projectBuilt.event;
     public readonly onProjectCleaned: vscode.Event<QbsProtocolMessageResponse> = this.projectCleaned.event;
+    public readonly onProjectGenerated: vscode.Event<QbsProtocolMessageResponse> = this.projectGenerated.event;
     public readonly onProjectInstalled: vscode.Event<QbsProtocolMessageResponse> = this.projectInstalled.event;
     public readonly onProjectResolved: vscode.Event<QbsSessionProjectData> = this.projectResolved.event;
     public readonly onProcessEnvironmentReceived: vscode.Event<QbsProcessEnvironment> = this.processEnvironmentReceived.event;
@@ -94,6 +96,7 @@ export class QbsSession implements vscode.Disposable {
     public async build(request: QbsProtocolRequest): Promise<void> { await this.sendRequest(request); }
     public async clean(request: QbsProtocolRequest): Promise<void> { await this.sendRequest(request); }
     public async install(request: QbsProtocolRequest): Promise<void> { await this.sendRequest(request); }
+    public async generate(request: QbsProtocolRequest): Promise<void> { await this.sendRequest(request); }
     public async cancel(request: QbsProtocolRequest): Promise<void> { await this.sendRequest(request); }
     public async getRunEnvironment(request: QbsProtocolRequest): Promise<void> { await this.sendRequest(request); }
 
@@ -155,6 +158,9 @@ export class QbsSession implements vscode.Disposable {
         } else if (type === QbsProtocolDataKey.InstallDone) {
             const result = new QbsProtocolMessageResponse(response[QbsProtocolDataKey.Error]);
             this.projectInstalled.fire(result);
+        } else if (type === QbsProtocolDataKey.GenerateDone) {
+            const result = new QbsProtocolMessageResponse(response[QbsProtocolDataKey.Error]);
+            this.projectGenerated.fire(result);
         } else if (type === QbsProtocolDataKey.LogData) {
             const result = new QbsProtocolMessageResponse(response[QbsProtocolDataKey.Message]);
             this.logMessageReceived.fire(result);

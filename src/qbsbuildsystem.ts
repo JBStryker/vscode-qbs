@@ -20,6 +20,7 @@ import { QbsProtocolCancelRequest } from './protocol/qbsprotocolcancelrequest';
 import { QbsProtocolCleanRequest } from './protocol/qbsprotocolcleanrequest';
 import { QbsProtocolCommandEchoMode } from './protocol/qbsprotocolcommandechomode';
 import { QbsProtocolErrorHandlingMode } from './protocol/qbsprotocolerrorhandlingmode';
+import { QbsProtocolGenerateRequest } from './protocol/qbsprotocolgeneraterequest';
 import { QbsProtocolGetRunEnvironmentRequest } from './protocol/qbsprotocolgetrunenvironmentrequest';
 import { QbsProtocolInstallRequest } from './protocol/qbsprotocolinstallrequest';
 import { QbsProtocolLogLevel } from './protocol/qbsprotocolloglevel';
@@ -757,10 +758,210 @@ export class QbsBuildSystem implements vscode.Disposable {
     }
 
     private async generateClangdbWithProgress(timeout: number): Promise<boolean> {
-        // TODO: Implement the actual clang compilation database generation
-        vscode.window.showInformationMessage(localize('qbs.buildsystem.generate.clangdb.placeholder.message',
-            'Generate Clangdb command called - implementation coming soon!'));
-        return true;
+        return await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: localize('qbs.buildsystem.generate.clangdb.progress.title', 'Generating Clang compilation database'),
+            cancellable: true
+        }, async (p, c) => {
+            const timestamp = performance.now();
+
+            QbsBuildSystem.logMessage(localize('qbs.buildsystem.generate.clangdb.started.message', 'Generating Clang compilation database...'));
+
+            try {
+                // Step 1: Resolve the project
+                p.report({ message: localize('qbs.buildsystem.generate.clangdb.step1.message', 'Step 1/3: Resolving project...') });
+                const resolveSuccess = await this.performResolveStep(c);
+                if (!resolveSuccess) {
+                    return false;
+                }
+
+                // Step 2: Build the project as dry-run
+                p.report({ message: localize('qbs.buildsystem.generate.clangdb.step2.message', 'Step 2/3: Building project (dry-run)...') });
+                const dryRunSuccess = await this.performDryRunBuildStep(c);
+                if (!dryRunSuccess) {
+                    return false;
+                }
+                
+                // Step 3: Generate the clangdb
+                p.report({ message: localize('qbs.buildsystem.generate.clangdb.step3.message', 'Step 3/3: Generating compilation database...') });
+                const generateSuccess = await this.performGenerateStep(c);
+                if (!generateSuccess) {
+                    return false;
+                }
+
+                const elapsed = msToTime(performance.now() - timestamp);
+                QbsBuildSystem.logMessage(localize('qbs.buildsystem.generate.clangdb.completed.message',
+                    'Clang compilation database successfully generated, elapsed time {0}', elapsed));
+
+                p.report({ message: localize('qbs.buildsystem.generate.clangdb.progress.completed.title',
+                    'Clang compilation database successfully generated') });
+
+                console.log('Waiting for generate clangdb progress popup visible, within timeout: ' + timeout);
+                setTimeout(() => {}, timeout);
+                return true;
+
+            } catch (error) {
+                const elapsed = msToTime(performance.now() - timestamp);
+                QbsBuildSystem.logMessage(localize('qbs.buildsystem.generate.clangdb.failed.message',
+                    'Error generating Clang compilation database, elapsed time {0}', elapsed));
+
+                p.report({ message: localize('qbs.buildsystem.generate.clangdb.progress.failed.title',
+                    'Clang compilation database generation failed') });
+
+                console.log('Waiting for generate clangdb progress popup visible, within timeout: ' + timeout);
+                setTimeout(() => {}, timeout);
+                return false;
+            }
+        });
+    }
+
+    private async performResolveStep(cancellationToken: vscode.CancellationToken): Promise<boolean> {
+        const request = this.createResolveRequest(false);
+        if (!QbsBuildSystem.ensureRequestIsReady(request))
+            return false;
+        else if (!QbsBuildSystem.ensureSaveFilesBeforeBuild())
+            return false;
+        else if (!QbsBuildSystem.ensureClearOutputBeforeOperation())
+            return false;
+        else if (!request) // Extra checking to use the method `this.session.resolve(request)`.
+            return false;
+
+        QbsBuildSystem.logMessage(localize('qbs.buildsystem.resolve.started.message', 'Resolving project...'));
+        QbsBuildSystem.prepareQbsDiagnostics();
+
+        console.log('Send resolve request for clangdb generation');
+        await this.session.resolve(request);
+        const disposables: vscode.Disposable[] = [];
+
+        return new Promise<boolean>(async (resolve) => {
+            cancellationToken.onCancellationRequested(async () => {
+                await vscode.commands.executeCommand(QbsCommandKey.CancelOperation);
+                resolve(false);
+            });
+
+            disposables.push(this.session.onProjectResolved(async (result) => {
+                QbsProjectManager.getInstance().getProject()?.setProjectData(true, result.data);
+                QbsProjectManager.getInstance().getProject()?.notifyOperationCompleted();
+
+                QbsBuildSystem.logMessageResponse(result.message);
+                QbsBuildSystem.diagnoseQbsInformationMessages(result.message);
+                QbsBuildSystem.submitQbsDiagnostics();
+
+                const success = (result.message) ? result.message.getIsEmpty() : false;
+                console.log('Received resolve response for clangdb generation with result: ' + success);
+
+                if (success) {
+                    QbsBuildSystem.logMessage(localize('qbs.buildsystem.resolve.completed.message',
+                        'Project successfully resolved'));
+                } else {
+                    QbsBuildSystem.logMessage(localize('qbs.buildsystem.resolve.failed.message',
+                        'Error resolving project'));
+                }
+
+                resolve(success);
+            }));
+        }).finally(() => {
+            console.log('Cleanup resolve subscriptions for clangdb generation');
+            disposables.forEach((d) => d.dispose());
+        });
+    }
+
+    private async performDryRunBuildStep(cancellationToken: vscode.CancellationToken): Promise<boolean> {
+        const productNames: string[] = []; // Empty array means build all products
+        const request = this.createBuildRequest(productNames, true); // true = dry-run
+        if (!QbsBuildSystem.ensureRequestIsReady(request))
+            return false;
+        else if (!QbsBuildSystem.ensureClearOutputBeforeOperation())
+            return false;
+        else if (!request) // Extra checking to use the method `this.session.build(request)`.
+            return false;
+
+        QbsBuildSystem.logMessage(localize('qbs.buildsystem.build.started.message', 'Building project...'));
+        QbsBuildSystem.prepareQbsDiagnostics();
+        QbsBuildSystem.prepareToolchainDiagnostics();
+
+        console.log('Send dry-run build request for clangdb generation');
+        await this.session.build(request);
+        const disposables: vscode.Disposable[] = [];
+
+        return new Promise<boolean>(async (resolve) => {
+            cancellationToken.onCancellationRequested(async () => {
+                await vscode.commands.executeCommand(QbsCommandKey.CancelOperation);
+                resolve(false);
+            });
+
+            disposables.push(this.session.onProjectBuilt(async (result) => {
+                QbsProjectManager.getInstance().getProject()?.setProjectData(false, result.data);
+                QbsProjectManager.getInstance().getProject()?.notifyOperationCompleted();
+
+                QbsBuildSystem.logMessageResponse(result.message);
+                QbsBuildSystem.diagnoseQbsInformationMessages(result.message);
+                QbsBuildSystem.submitQbsDiagnostics();
+                QbsBuildSystem.submitToolchainDiagnostics();
+
+                const success = (result.message) ? result.message.getIsEmpty() : false;
+                console.log('Received dry-run build response for clangdb generation with result: ' + success);
+
+                if (success) {
+                    QbsBuildSystem.logMessage(localize('qbs.buildsystem.build.completed.message',
+                        'Project successfully built'));
+                } else {
+                    QbsBuildSystem.logMessage(localize('qbs.buildsystem.build.failed.message',
+                        'Error building project'));
+                }
+
+                resolve(success);
+            }));
+        }).finally(() => {
+            console.log('Cleanup dry-run build subscriptions for clangdb generation');
+            disposables.forEach((d) => d.dispose());
+        });
+    }
+
+    private async performGenerateStep(cancellationToken: vscode.CancellationToken): Promise<boolean> {
+        const request = this.createGenerateRequest();
+        if (!QbsBuildSystem.ensureRequestIsReady(request))
+            return false;
+        else if (!QbsBuildSystem.ensureClearOutputBeforeOperation())
+            return false;
+        else if (!request) // Extra checking to use the method `this.session.generate(request)`.
+            return false;
+
+        QbsBuildSystem.logMessage(localize('qbs.buildsystem.generate.clangdb.started.message', 'Generating Clang compilation database...'));
+        QbsBuildSystem.prepareQbsDiagnostics();
+
+        console.log('Send generate request for clangdb');
+        await this.session.generate(request);
+        const disposables: vscode.Disposable[] = [];
+
+        return new Promise<boolean>(async (resolve) => {
+            cancellationToken.onCancellationRequested(async () => {
+                await vscode.commands.executeCommand(QbsCommandKey.CancelOperation);
+                resolve(false);
+            });
+
+            disposables.push(this.session.onProjectGenerated(async (result) => {
+                QbsBuildSystem.logMessageResponse(result);
+                QbsBuildSystem.diagnoseQbsInformationMessages(result);
+                QbsBuildSystem.submitQbsDiagnostics();
+
+                const success = (result) ? result.getIsEmpty() : false;
+                console.log('Received generate response for clangdb with result: ' + success);
+
+                if (success) {
+                    QbsBuildSystem.logMessage(localize('qbs.buildsystem.generate.clangdb.completed.message',
+                        'Clang compilation database successfully generated'));
+                } else {
+                    QbsBuildSystem.logMessage(localize('qbs.buildsystem.generate.clangdb.failed.message',
+                        'Error generating Clang compilation database'));
+                }
+
+                resolve(success);
+            }));
+        }).finally(() => {
+            console.log('Cleanup generate subscriptions for clangdb generation');
+            disposables.forEach((d) => d.dispose());
+        });
     }
 
     public async fetchProductRunEnvironment(productName: string): Promise<QbsProcessEnvironment> {
@@ -824,14 +1025,14 @@ export class QbsBuildSystem implements vscode.Disposable {
         return request;
     }
 
-    private createBuildRequest(productNames: string[]): QbsProtocolBuildRequest | undefined {
+    private createBuildRequest(productNames: string[], dryRun?: boolean): QbsProtocolBuildRequest | undefined {
         const cleanInstallRoot = QbsBuildSystem.getCleanInstallRootFromSettings();
         const commandEchoMode = QbsBuildSystem.getCommandEchoModeFromSettings();
         const keepGoing = QbsBuildSystem.getKeepGoingFromSettings();
         const logLevel = QbsBuildSystem.getLogLevelFromSettings();
         const maxJobs = QbsBuildSystem.getMaxJobsFromSettings();
         const install = QbsBuildSystem.getInstallFromSettings();
-        const request = new QbsProtocolBuildRequest(cleanInstallRoot, commandEchoMode, keepGoing, logLevel, maxJobs, install);
+        const request = new QbsProtocolBuildRequest(cleanInstallRoot, commandEchoMode, keepGoing, logLevel, maxJobs, install, dryRun);
         request.setProducts(productNames);
         console.log('Create build request:\n'
             + '\tcleanInstallRoot: ' + cleanInstallRoot + '\n'
@@ -840,6 +1041,7 @@ export class QbsBuildSystem implements vscode.Disposable {
             + '\tlogLevel: ' + logLevel + '\n'
             + '\tmaxJobs: ' + maxJobs + '\n'
             + '\tinstall: ' + install + '\n'
+            + '\tdryRun: ' + dryRun + '\n'
             + '\tproducts: ' + productNames
         );
         return request;
@@ -878,7 +1080,7 @@ export class QbsBuildSystem implements vscode.Disposable {
         const logLevel = QbsBuildSystem.getLogLevelFromSettings();
         const maxJobs = QbsBuildSystem.getMaxJobsFromSettings();
         const install = QbsBuildSystem.getInstallFromSettings();
-        const request = new QbsProtocolBuildRequest(cleanInstallRoot, commandEchoMode, keepGoing, logLevel, maxJobs, install);
+        const request = new QbsProtocolBuildRequest(cleanInstallRoot, commandEchoMode, keepGoing, logLevel, maxJobs, install, undefined);
         request.setChangedFiles([fsPath]);
         request.setFilesToConsider([fsPath]);
         request.setActiveFileTags(['obj', 'hpp']);
@@ -890,6 +1092,18 @@ export class QbsBuildSystem implements vscode.Disposable {
             + '\tmaxJobs: ' + maxJobs + '\n'
             + '\tinstall: ' + install + '\n'
             + '\tchanged files: ' + fsPath
+        );
+        return request;
+    }
+
+    private createGenerateRequest(): QbsProtocolGenerateRequest | undefined {
+        const keepGoing = QbsBuildSystem.getKeepGoingFromSettings();
+        const logLevel = QbsBuildSystem.getLogLevelFromSettings();
+        const request = new QbsProtocolGenerateRequest('clangdb', keepGoing, logLevel);
+        console.log('Create generate request:\n'
+            + '\tgeneratorName: clangdb\n'
+            + '\tkeepGoing: ' + keepGoing + '\n'
+            + '\tlogLevel: ' + logLevel
         );
         return request;
     }

@@ -3,6 +3,7 @@ export enum QbsProtocolRequestType {
     Build = 'build-project',
     Cancel = 'cancel-job',
     Clean = 'clean-project',
+    Generate = 'generate',
     GetRunEnvironment = 'get-run-environment',
     Install = 'install-project',
     Resolve = 'resolve-project',
