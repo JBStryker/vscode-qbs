@@ -425,9 +425,17 @@ export class QbsProjectManager implements vscode.Disposable {
     }
 
     /** Returns the list of paths of all found Qbs project files with the `*.qbs`
-     * extension in the current workspace directory. */
+     * extension in the current workspace directory. Paths ending with `.sln.qbs`
+     * are preferred and appear first so that restore/auto-select uses them when present. */
     private static async getWorkspaceProjects(): Promise<string[]> {
-        return (await vscode.workspace.findFiles('*.qbs')).map(uri => uri.fsPath);
+        const paths = (await vscode.workspace.findFiles('*.qbs')).map(uri => uri.fsPath);
+        return paths.sort((a, b) => {
+            const aIsSln = a.toLowerCase().endsWith('.sln.qbs');
+            const bIsSln = b.toLowerCase().endsWith('.sln.qbs');
+            if (aIsSln !== bIsSln)
+                return aIsSln ? -1 : 1; // .sln.qbs first
+            return a.localeCompare(b, undefined, { sensitivity: 'base' });
+        });
     }
 
     private static async which(name: string): Promise<string | undefined> {
