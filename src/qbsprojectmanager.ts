@@ -382,6 +382,16 @@ export class QbsProjectManager implements vscode.Disposable {
         await QbsLaunchConfigurationManager.getInstance().restart();
         await vscode.commands.executeCommand(QbsCommandKey.ScanLaunchConfigurations);
 
+        // Default to the first launch config when none was restored (e.g. initial load).
+        const launchConfigs = QbsLaunchConfigurationManager.getInstance().getConfigurations();
+        if (this.project && !this.project.getDebuggerName() && launchConfigs.length > 0) {
+            const first = launchConfigs[0];
+            if (first.getName()) {
+                this.project.setDebuggerName(first.getName());
+                this.delaySaveProject(this.qbsStoredProjectSaveDelay);
+            }
+        }
+
         this.projectOpen.fire();
     }
 
@@ -425,9 +435,17 @@ export class QbsProjectManager implements vscode.Disposable {
     }
 
     /** Returns the list of paths of all found Qbs project files with the `*.qbs`
-     * extension in the current workspace directory. */
+     * extension in the current workspace directory. Paths ending with `.sln.qbs`
+     * are preferred and appear first so that restore/auto-select uses them when present. */
     private static async getWorkspaceProjects(): Promise<string[]> {
-        return (await vscode.workspace.findFiles('*.qbs')).map(uri => uri.fsPath);
+        const paths = (await vscode.workspace.findFiles('*.qbs')).map(uri => uri.fsPath);
+        return paths.sort((a, b) => {
+            const aIsSln = a.toLowerCase().endsWith('.sln.qbs');
+            const bIsSln = b.toLowerCase().endsWith('.sln.qbs');
+            if (aIsSln !== bIsSln)
+                return aIsSln ? -1 : 1; // .sln.qbs first
+            return a.localeCompare(b, undefined, { sensitivity: 'base' });
+        });
     }
 
     private static async which(name: string): Promise<string | undefined> {
