@@ -1,6 +1,7 @@
 import * as chokidar from 'chokidar';
 import * as fs from 'fs';
 import * as jsonc from 'jsonc-parser';
+import * as path from 'path';
 import * as nls from 'vscode-nls';
 import * as vscode from 'vscode';
 
@@ -57,6 +58,9 @@ export class QbsBuildConfigurationManager implements vscode.Disposable {
     public async start(): Promise<void> {
         console.log('Starting build configuration manager');
         const subscribeBuildConfigurationsChanged = async () => {
+            await this.fsBuildConfigurationsWatcher?.close();
+            this.fsBuildConfigurationsWatcher = undefined;
+
             const fsProjectPath = QbsProjectManager.getInstance().getProject()?.getFsPath();
             if (!fsProjectPath)
                 return;
@@ -64,12 +68,29 @@ export class QbsBuildConfigurationManager implements vscode.Disposable {
             if (!fsPath)
                 return;
             console.log('Build configurations file name changed to: ' + fsPath);
-            this.fsBuildConfigurationsWatcher = chokidar.watch(fsPath, { ignoreInitial: true });
-            this.fsBuildConfigurationsWatcher.on('change', () => {
+
+            const onBuildConfigurationsFileChanged = () => {
                 console.log('Build configurations file content changed');
                 this.scanConfigurations();
-            });
-        }
+            };
+
+            if (fs.existsSync(fsPath)) {
+                this.fsBuildConfigurationsWatcher = chokidar.watch(fsPath, { ignoreInitial: true });
+                this.fsBuildConfigurationsWatcher.on('change', onBuildConfigurationsFileChanged);
+            } else {
+                const dir = path.dirname(fsPath);
+                if (fs.existsSync(dir)) {
+                    this.fsBuildConfigurationsWatcher = chokidar.watch(dir, { ignoreInitial: true, depth: 0 });
+                    const filter = (evtPath: string) => {
+                        if (path.normalize(evtPath) !== path.normalize(fsPath))
+                            return;
+                        onBuildConfigurationsFileChanged();
+                    };
+                    this.fsBuildConfigurationsWatcher.on('add', filter);
+                    this.fsBuildConfigurationsWatcher.on('change', filter);
+                }
+            }
+        };
 
         this.disposable?.dispose();
         this.disposable = QbsSettings.observeSetting(QbsSettings.SettingKey.BuildConfigurationsFilePath,
@@ -98,9 +119,15 @@ export class QbsBuildConfigurationManager implements vscode.Disposable {
     }
 
     private async scanConfigurations(): Promise<void> {
-        const fsPath = QbsBuildConfigurationManager.ensureConfigurationsCreated();
+        const fsPath = QbsBuildConfigurationManager.resolveBuildConfigurationsFilePath();
         if (!fsPath)
             return;
+        if (!fs.existsSync(fsPath)) {
+            this.configuration = QbsBuildConfigurationManager.getDefaultConfiguration();
+            console.log('No qbs-configurations.json on disk; using in-memory default build configurations');
+            this.updated.fire();
+            return;
+        }
         return new Promise<QbsAllBuildConfigurationData>((resolve) => {
             console.log('Start reading build configurations from: ' + fsPath);
             fs.readFile(fsPath, (error, data) => {
@@ -159,12 +186,12 @@ export class QbsBuildConfigurationManager implements vscode.Disposable {
     }
 
     private static async editConfigurations(): Promise<void> {
-        // Create if not exists yet, and then show the `qbs-configurations.json` file.
-        const fsPath = QbsBuildConfigurationManager.ensureConfigurationsCreated();
+        const fsPath = QbsBuildConfigurationManager.ensureBuildConfigurationsFileForEdit();
         if (!fsPath)
             return;
         const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(fsPath));
         await vscode.window.showTextDocument(doc);
+        await QbsBuildConfigurationManager.getInstance().restart();
     }
 
     private static migrateBuildConfigurationFromVersionUnknown(fsPath: string, content: any): QbsAllBuildConfigurationData {
@@ -207,11 +234,15 @@ export class QbsBuildConfigurationManager implements vscode.Disposable {
         return data;
     }
 
-    private static ensureConfigurationsCreated(): string | undefined {
+    private static resolveBuildConfigurationsFilePath(): string | undefined {
         const fsProjectPath = QbsProjectManager.getInstance().getProject()?.getFsPath();
         if (!fsProjectPath)
             return;
-        const fsPath = this.getFullBuildConfigurationsFilePath(fsProjectPath);
+        return QbsBuildConfigurationManager.getFullBuildConfigurationsFilePath(fsProjectPath);
+    }
+
+    private static ensureBuildConfigurationsFileForEdit(): string | undefined {
+        const fsPath = QbsBuildConfigurationManager.resolveBuildConfigurationsFilePath();
         if (!fsPath)
             return;
         ensureFileCreated(fsPath, QbsBuildConfigurationManager.writeDefaultConfigurations);
