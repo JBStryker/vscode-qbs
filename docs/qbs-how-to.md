@@ -56,8 +56,8 @@ command, or press the **Debug** button in the status bar.
 ## Edit a build configurations
 
 * From the command palette in VS Code, run the **Qbs: Edit Build Configurations**
-command, which will create the `qbs-configurations.json`
-file.
+command, which creates `qbs-configurations.json` if it is not there yet
+(otherwise the extension only uses the same defaults in memory).
 * Add desired build configurations and the overridden properties
 to this `qbs-configurations.json` file, and save it.
 * When the `qbs-configurations.json` file is changed,

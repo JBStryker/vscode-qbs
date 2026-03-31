@@ -18,27 +18,26 @@ a special `qbs-configurations.json` file.
 A data format in this file corresponds to the official
 Qbs documentation, the link to which is given above.
 
-When this Qbs extension starts, it creates the default
-`qbs-configurations.json` file containing all default
-buid configurations. The user can extend this file by its
-purposes. When the file is changed, the Qbs extension will
-automatically start resolving the active Qbs project
+Until a `qbs-configurations.json` file is found on disk, the extension
+uses the same default build configurations **in memory** (it does not
+create the file automatically). To extend or replace them add the file 
+(see below). When the file is present and changed, the Qbs
+extension will automatically start resolving the active Qbs project
 with the new configurations and properties set in the file.
 
 ## Create build configurations
 
-You can to call the **Qbs: Edit Build Configurations** command
-from the command palette. This command will create the default
-`qbs-configurations.json` file, if it does not exist,
-and then will open this file in the editor.
+Call the **Qbs: Edit Build Configurations** command from the command
+palette. This is the only built-in action that **creates** the default
+`qbs-configurations.json` when it does not exist yet; it then opens the
+file in the editor.
 
-To actualize the build configurations, run the
-**Qbs: Scan Build Configurations** command, which re-reads the
-`qbs-configurations.json` file.
+To reload from disk after edits (or if you created the file outside the
+editor), run **Qbs: Scan Build Configurations**.
 
-By default this file creates in the current project
-workspace folder, located at
-`<path/to/your/project/.vscode/qbs-configurations.json>`.
+By default the file lives under the current project workspace folder at
+`<path/to/your/project/.vscode/qbs-configurations.json>` (see
+`qbs.buildConfigurationsFilePath` if you use a custom location).
 
 The default contents of this configuration file looks
 like this:
